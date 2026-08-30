@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (go ${{ matrix.go }}, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go: ["1.22", "1.23"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test ./... -count=1
+
+  lint:
+    name: vet + gofmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: go vet
+        run: go vet ./...
+      - name: gofmt
+        run: |
+          fmt_out="$(gofmt -l .)"
+          if [ -n "$fmt_out" ]; then
+            echo "The following files are not gofmt'd:"
+            echo "$fmt_out"
+            exit 1
+          fi
+
+  smoke:
+    name: smoke test (build + run against a real domain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: Build binary
+        run: go build -o dnsdrift ./cmd/dnsdrift
+      - name: Run against a real domain
+        # dnsdrift exits non-zero on resolver disagreement or health
+        # findings, which is expected CI-gating behavior for a real query
+        # but not something this smoke test should fail on -- it only
+        # proves the binary builds and completes a live query. A hard
+        # failure (exit 3) or unparseable output still fails the job.
+        run: |
+          set +e
+          ./dnsdrift query --types A,NS,SOA example.com --json > /tmp/out.json
+          code=$?
+          set -e
+          if [ "$code" -eq 3 ]; then
+            echo "dnsdrift failed to complete the query (exit 3)"
+            cat /tmp/out.json
+            exit 1
+          fi
+          echo "exit code: $code"
+          cat /tmp/out.json
+          python3 -c "import json,sys; json.load(open('/tmp/out.json'))"
+          ./dnsdrift version

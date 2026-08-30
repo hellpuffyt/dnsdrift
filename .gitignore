@@ -1,0 +1,7 @@
+/dnsdrift
+/dist/
+*.exe
+*.test
+*.out
+*.json.snapshot
+.DS_Store
