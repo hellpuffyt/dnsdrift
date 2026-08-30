@@ -17,6 +17,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         go: ["1.22", "1.23"]
+        exclude:
+          # macos-latest is arm64 macOS 15+, which refuses to load binaries
+          # produced by Go 1.22: the test binary dies before main() with
+          # "dyld: missing LC_UUID load command" and "signal: abort trap".
+          # That is a toolchain/OS incompatibility, not a defect in this code
+          # -- Go 1.22 passes on Linux and Windows, and 1.23 passes on macOS.
+          # Go 1.22 remains supported and tested; it is only this one
+          # combination that cannot run.
+          - os: macos-latest
+            go: "1.22"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +75,7 @@ jobs:
         # failure (exit 3) or unparseable output still fails the job.
         run: |
           set +e
-          ./dnsdrift query --types A,NS,SOA example.com --json > /tmp/out.json
+          ./dnsdrift query --types A,NS,SOA --json example.com > /tmp/out.json
           code=$?
           set -e
           if [ "$code" -eq 3 ]; then

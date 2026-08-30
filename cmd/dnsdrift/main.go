@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/prabeshsharma/dnsdrift/internal/analysis"
@@ -72,6 +73,50 @@ Exit codes: 0 = full agreement and no health findings; 1 = disagreement or a
 health finding was found; 2 = usage error; 3 = a query could not complete.`)
 }
 
+// reorderArgs moves flag-looking arguments ahead of positional ones.
+//
+// Go's flag package stops parsing at the first non-flag argument, so
+// `dnsdrift query example.com --json` would treat "--json" as a second
+// positional and fail. Users reasonably type the domain first, so accept both
+// orders rather than making them remember which one this tool wants.
+//
+// A "--" terminator is honoured: everything after it stays positional.
+func reorderArgs(args []string) []string {
+	flags := make([]string, 0, len(args))
+	positional := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
+		if strings.HasPrefix(arg, "-") && arg != "-" {
+			flags = append(flags, arg)
+			// A flag written as "--name value" consumes the next argument.
+			// One written as "--name=value" does not.
+			if !strings.Contains(arg, "=") && i+1 < len(args) &&
+				!strings.HasPrefix(args[i+1], "-") && takesValue(strings.TrimLeft(arg, "-")) {
+				i++
+				flags = append(flags, args[i])
+			}
+			continue
+		}
+		positional = append(positional, arg)
+	}
+	return append(flags, positional...)
+}
+
+// takesValue reports whether a flag name expects a following value.
+// Boolean flags do not, which is why they cannot be listed here.
+func takesValue(name string) bool {
+	switch name {
+	case "types", "resolvers", "timeout", "save":
+		return true
+	default:
+		return false
+	}
+}
+
 func runQuery(args []string, stdout, stderr *os.File) int {
 	fs := flag.NewFlagSet("query", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -81,7 +126,7 @@ func runQuery(args []string, stdout, stderr *os.File) int {
 	timeoutFlag := fs.Duration("timeout", 5*time.Second, "per-query timeout")
 	savePath := fs.String("save", "", "save this query as a JSON snapshot")
 	jsonOut := fs.Bool("json", false, "emit JSON instead of a table")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderArgs(args)); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
