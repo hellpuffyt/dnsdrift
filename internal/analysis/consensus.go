@@ -3,7 +3,7 @@ package analysis
 import (
 	"sort"
 
-	"github.com/prabeshsharma/dnsdrift/internal/resolver"
+	"github.com/hellpuffyt/dnsdrift/internal/resolver"
 )
 
 // Verdict classifies why a resolver's answer disagrees with the consensus.

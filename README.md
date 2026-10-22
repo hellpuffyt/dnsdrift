@@ -77,13 +77,13 @@ this tool's core feature needs.
 ## Installation
 
 ```sh
-go install github.com/prabeshsharma/dnsdrift/cmd/dnsdrift@latest
+go install github.com/hellpuffyt/dnsdrift/cmd/dnsdrift@latest
 ```
 
 Or build from source:
 
 ```sh
-git clone https://github.com/prabeshsharma/dnsdrift
+git clone https://github.com/hellpuffyt/dnsdrift
 cd dnsdrift
 go build -o dnsdrift ./cmd/dnsdrift
 ```

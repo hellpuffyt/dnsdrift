@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/prabeshsharma/dnsdrift/internal/analysis"
+	"github.com/hellpuffyt/dnsdrift/internal/analysis"
 )
 
 // QueryOutput is the full result of a `dnsdrift query` run, in the shape

@@ -3,7 +3,7 @@ package analysis
 import (
 	"testing"
 
-	"github.com/prabeshsharma/dnsdrift/internal/resolver"
+	"github.com/hellpuffyt/dnsdrift/internal/resolver"
 )
 
 func ans(records ...string) resolver.Answer {

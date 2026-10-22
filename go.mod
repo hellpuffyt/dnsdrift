@@ -1,4 +1,4 @@
-module github.com/prabeshsharma/dnsdrift
+module github.com/hellpuffyt/dnsdrift
 
 go 1.22
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/prabeshsharma/dnsdrift/internal/resolver"
+	"github.com/hellpuffyt/dnsdrift/internal/resolver"
 )
 
 func TestRunPanelCollectsPerResolverAnswers(t *testing.T) {

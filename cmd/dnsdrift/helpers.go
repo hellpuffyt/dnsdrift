@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prabeshsharma/dnsdrift/internal/analysis"
-	"github.com/prabeshsharma/dnsdrift/internal/query"
-	"github.com/prabeshsharma/dnsdrift/internal/resolver"
-	"github.com/prabeshsharma/dnsdrift/internal/snapshot"
+	"github.com/hellpuffyt/dnsdrift/internal/analysis"
+	"github.com/hellpuffyt/dnsdrift/internal/query"
+	"github.com/hellpuffyt/dnsdrift/internal/resolver"
+	"github.com/hellpuffyt/dnsdrift/internal/snapshot"
 )
 
 // normalizeName lowercases a domain name and strips a trailing root dot, so

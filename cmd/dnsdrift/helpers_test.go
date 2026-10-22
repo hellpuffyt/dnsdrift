@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prabeshsharma/dnsdrift/internal/analysis"
-	"github.com/prabeshsharma/dnsdrift/internal/query"
-	"github.com/prabeshsharma/dnsdrift/internal/resolver"
+	"github.com/hellpuffyt/dnsdrift/internal/analysis"
+	"github.com/hellpuffyt/dnsdrift/internal/query"
+	"github.com/hellpuffyt/dnsdrift/internal/resolver"
 )
 
 func TestNormalizeName(t *testing.T) {

@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prabeshsharma/dnsdrift/internal/analysis"
-	"github.com/prabeshsharma/dnsdrift/internal/output"
-	"github.com/prabeshsharma/dnsdrift/internal/query"
-	"github.com/prabeshsharma/dnsdrift/internal/resolver"
-	"github.com/prabeshsharma/dnsdrift/internal/snapshot"
+	"github.com/hellpuffyt/dnsdrift/internal/analysis"
+	"github.com/hellpuffyt/dnsdrift/internal/output"
+	"github.com/hellpuffyt/dnsdrift/internal/query"
+	"github.com/hellpuffyt/dnsdrift/internal/resolver"
+	"github.com/hellpuffyt/dnsdrift/internal/snapshot"
 )
 
 const version = "0.1.0"
