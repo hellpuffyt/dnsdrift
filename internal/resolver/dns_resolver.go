@@ -93,22 +93,37 @@ func (r *DNSResolver) Query(ctx context.Context, name string, rtype RecordType) 
 		}
 		if rtype == TypeSOA {
 			if soaRR, ok := rr.(*dns.SOA); ok {
-				answer.SOA = &SOA{
-					Zone:    strings.TrimSuffix(soaRR.Header().Name, "."),
-					MName:   soaRR.Ns,
-					RName:   soaRR.Mbox,
-					Serial:  soaRR.Serial,
-					Refresh: soaRR.Refresh,
-					Retry:   soaRR.Retry,
-					Expire:  soaRR.Expire,
-					Minimum: soaRR.Minttl,
-				}
+				answer.SOA = soaFromRR(soaRR)
+			}
+		}
+	}
+	if rtype == TypeSOA && answer.SOA == nil {
+		// Below the zone apex there is no SOA in the answer section; the
+		// zone's SOA comes back in the authority section instead. It still
+		// names the zone and carries the serial the verdicts need.
+		for _, rr := range resp.Ns {
+			if soaRR, ok := rr.(*dns.SOA); ok {
+				answer.SOA = soaFromRR(soaRR)
+				break
 			}
 		}
 	}
 	answer.TTL = minTTL
 	answer.Records = NormalizeRecords(answer.Records)
 	return answer, nil
+}
+
+func soaFromRR(soaRR *dns.SOA) *SOA {
+	return &SOA{
+		Zone:    strings.TrimSuffix(soaRR.Header().Name, "."),
+		MName:   soaRR.Ns,
+		RName:   soaRR.Mbox,
+		Serial:  soaRR.Serial,
+		Refresh: soaRR.Refresh,
+		Retry:   soaRR.Retry,
+		Expire:  soaRR.Expire,
+		Minimum: soaRR.Minttl,
+	}
 }
 
 func (r *DNSResolver) exchangeWithContext(ctx context.Context, msg *dns.Msg) (*dns.Msg, time.Duration, error) {
