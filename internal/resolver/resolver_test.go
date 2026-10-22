@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"context"
 	"reflect"
 	"testing"
 )
@@ -88,7 +89,7 @@ func TestAnswerKey(t *testing.T) {
 
 func TestFakeResolverReturnsConfiguredAnswer(t *testing.T) {
 	f := NewFakeResolver("Test", "1.2.3.4:53").WithAnswer(TypeA, Answer{Records: []string{"9.9.9.9"}, TTL: 300})
-	got, err := f.Query(nil, "example.com", TypeA)
+	got, err := f.Query(context.Background(), "example.com", TypeA)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,7 +106,7 @@ func TestFakeResolverReturnsConfiguredAnswer(t *testing.T) {
 
 func TestFakeResolverUnconfiguredTypeErrors(t *testing.T) {
 	f := NewFakeResolver("Test", "1.2.3.4:53")
-	got, err := f.Query(nil, "example.com", TypeAAAA)
+	got, err := f.Query(context.Background(), "example.com", TypeAAAA)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -117,7 +118,7 @@ func TestFakeResolverUnconfiguredTypeErrors(t *testing.T) {
 func TestFakeResolverQueryErr(t *testing.T) {
 	f := NewFakeResolver("Test", "1.2.3.4:53")
 	f.QueryErr = errTimeout{}
-	_, err := f.Query(nil, "example.com", TypeA)
+	_, err := f.Query(context.Background(), "example.com", TypeA)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
