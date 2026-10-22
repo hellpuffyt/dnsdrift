@@ -167,10 +167,17 @@ func runQuery(args []string, stdout, stderr *os.File) int {
 	cnameResolves := false
 	if cReport, ok := reports[resolver.TypeCNAME]; ok {
 		if rec := majorityRecords(cReport); len(rec) > 0 && len(panel) > 0 {
-			checkCtx, checkCancel := context.WithTimeout(context.Background(), *timeoutFlag)
-			ans, qerr := panel[0].Query(checkCtx, rec[0], resolver.TypeA)
-			checkCancel()
-			cnameResolves = qerr == nil && ans.Err == "" && len(ans.Records) > 0
+			// A target with only IPv6 addresses is not dangling: try A,
+			// then AAAA.
+			for _, t := range []resolver.RecordType{resolver.TypeA, resolver.TypeAAAA} {
+				checkCtx, checkCancel := context.WithTimeout(context.Background(), *timeoutFlag)
+				ans, qerr := panel[0].Query(checkCtx, rec[0], t)
+				checkCancel()
+				if qerr == nil && ans.Err == "" && len(ans.Records) > 0 {
+					cnameResolves = true
+					break
+				}
+			}
 		}
 	}
 	healthInput := buildHealthInput(domain, res, reports, cnameResolves)
@@ -193,6 +200,10 @@ func runQuery(args []string, stdout, stderr *os.File) int {
 		}
 	}
 
+	if allFailed(res, types) {
+		fmt.Fprintln(stderr, "no resolver answered any query; check connectivity and --resolvers")
+		return 3
+	}
 	if out.AnyDisagreement() {
 		return 1
 	}

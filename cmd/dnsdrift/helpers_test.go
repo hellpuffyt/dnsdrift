@@ -177,12 +177,67 @@ func TestBuildSnapshotSkipsErroredResolvers(t *testing.T) {
 	}
 }
 
-func TestFirstTTLSkipsErrors(t *testing.T) {
+// Replaces TestFirstTTLSkipsErrors: the TTL check now uses the largest
+// observed TTL (closest to the configured value) instead of whichever
+// resolver came first, whose cache may be about to expire.
+func TestObservedTTLSkipsErrorsAndTakesMax(t *testing.T) {
 	answers := []analysis.ResolverAnswer{
 		{Resolver: "Google", Answer: resolver.Answer{Err: "timeout"}},
-		{Resolver: "Cloudflare", Answer: resolver.Answer{TTL: 42}},
+		{Resolver: "Cloudflare", Answer: resolver.Answer{TTL: 3}},
+		{Resolver: "Quad9", Answer: resolver.Answer{TTL: 287}},
 	}
-	if got := firstTTL(answers); got != 42 {
-		t.Errorf("got %d, want 42", got)
+	if got := observedTTL(answers); got != 287 {
+		t.Errorf("got %d, want 287", got)
+	}
+}
+
+// Regression: with no SOA zone information the queried name was assumed to
+// be the apex, so any CNAME'd subdomain got a "cname-at-apex" error.
+func TestBuildHealthInputSubdomainIsNotApex(t *testing.T) {
+	cname := map[resolver.RecordType]analysis.Report{
+		resolver.TypeCNAME: {Groups: []analysis.Group{{Records: []string{"lb.example.net"}, IsMajority: true}}},
+	}
+	res := query.Result{
+		ByType:            map[resolver.RecordType][]analysis.ResolverAnswer{},
+		SOAZoneByResolver: map[string]string{"Google": "example.com", "Quad9": "example.com"},
+	}
+	if in := buildHealthInput("www.example.com", res, cname, true); in.IsApex {
+		t.Fatalf("www.example.com treated as apex of example.com")
+	}
+	if in := buildHealthInput("example.com", res, cname, true); !in.IsApex {
+		t.Fatalf("apex not detected from companion SOA zones")
+	}
+	res.SOAZoneByResolver = nil
+	if in := buildHealthInput("www.example.com", res, cname, true); in.IsApex {
+		t.Fatalf("unknown zone must not be treated as apex")
+	}
+}
+
+func TestParseExtraResolversIPv6AndPorts(t *testing.T) {
+	rs, err := parseExtraResolvers("A=::1,B=[2001:db8::53]:5353,C=192.0.2.53,D=dns.example", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"[::1]:53", "[2001:db8::53]:5353", "192.0.2.53:53", "dns.example:53"}
+	for i, r := range rs {
+		if r.Address() != want[i] {
+			t.Errorf("%s: address %q, want %q", r.Name(), r.Address(), want[i])
+		}
+	}
+}
+
+// Regression: "no-ns-records" (an error) was reported whenever NS was not in
+// --types, and for every name below the apex.
+func TestBuildHealthInputSkipsNSCheckWhenNotApplicable(t *testing.T) {
+	ns := analysis.Report{Groups: []analysis.Group{{Records: []string{"ns1.example.com", "ns2.example.com"}, IsMajority: true}}}
+	res := query.Result{ByType: map[resolver.RecordType][]analysis.ResolverAnswer{}, SOAZoneByResolver: map[string]string{"G": "example.com"}}
+	if in := buildHealthInput("example.com", res, map[resolver.RecordType]analysis.Report{}, false); !in.SkipNS {
+		t.Errorf("NS not queried: check must be skipped")
+	}
+	if in := buildHealthInput("www.example.com", res, map[resolver.RecordType]analysis.Report{resolver.TypeNS: {}}, false); !in.SkipNS {
+		t.Errorf("below the apex: check must be skipped")
+	}
+	if in := buildHealthInput("example.com", res, map[resolver.RecordType]analysis.Report{resolver.TypeNS: ns}, false); in.SkipNS {
+		t.Errorf("apex with NS queried: check must run")
 	}
 }

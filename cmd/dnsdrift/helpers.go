@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -58,8 +59,9 @@ func parseExtraResolvers(raw string, timeout time.Duration) ([]resolver.Resolver
 			return nil, fmt.Errorf("invalid --resolvers entry %q, expected Name=host[:port]", part)
 		}
 		addr := nameAddr[1]
-		if !strings.Contains(addr, ":") {
-			addr = addr + ":53"
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			// No port given: "192.0.2.1", "dns.example", "::1" or "[::1]".
+			addr = net.JoinHostPort(strings.Trim(addr, "[]"), "53")
 		}
 		out = append(out, resolver.NewDNSResolver(nameAddr[0], addr, timeout))
 	}
@@ -131,20 +133,21 @@ func buildHealthInput(domain string, res query.Result, reports map[resolver.Reco
 	if aReport, ok := reports[resolver.TypeA]; ok {
 		if rec := majorityRecords(aReport); rec != nil {
 			in.HasTTL = true
-			in.TTL = firstTTL(res.ByType[resolver.TypeA])
+			in.TTL = observedTTL(res.ByType[resolver.TypeA])
 			in.TTLRecordType = "A"
 		}
 	}
 
 	soaZone := majoritySOAZone(res.ByType[resolver.TypeSOA])
 	if soaZone == "" {
-		// SOA may not have been requested explicitly as an output type;
-		// fall back to scanning SOAByResolver-derived zone via any A/CNAME
-		// answer's implicit apex is not available, so leave apex detection
-		// off if we truly have nothing to compare against.
-		soaZone = domain
+		soaZone = majorityZone(res.SOAZoneByResolver)
 	}
-	in.IsApex = normalizeName(domain) == normalizeName(soaZone)
+	// Without any SOA data the apex is unknown: do not guess. (Assuming
+	// the queried name was the apex flagged every CNAME'd subdomain as
+	// "cname-at-apex".)
+	in.IsApex = soaZone != "" && normalizeName(domain) == normalizeName(soaZone)
+	_, nsQueried := reports[resolver.TypeNS]
+	in.SkipNS = !nsQueried || !in.IsApex
 
 	if cReport, ok := reports[resolver.TypeCNAME]; ok {
 		if rec := majorityRecords(cReport); len(rec) > 0 {
@@ -157,13 +160,50 @@ func buildHealthInput(domain string, res query.Result, reports map[resolver.Reco
 	return in
 }
 
-func firstTTL(answers []analysis.ResolverAnswer) uint32 {
-	for _, ra := range answers {
-		if ra.Answer.Err == "" {
-			return ra.Answer.TTL
+// majorityZone returns the most common non-empty zone in byResolver (ties
+// broken alphabetically for determinism), or "" if there is none.
+func majorityZone(byResolver map[string]string) string {
+	counts := map[string]int{}
+	for _, z := range byResolver {
+		if z != "" {
+			counts[z]++
 		}
 	}
-	return 0
+	best, bestCount := "", 0
+	for z, c := range counts {
+		if c > bestCount || (c == bestCount && z < best) {
+			best, bestCount = z, c
+		}
+	}
+	return best
+}
+
+// observedTTL returns the largest TTL among successful answers. Recursive
+// resolvers report the time left in their cache, which counts down; the
+// largest value is the closest to the record's configured TTL, so the TTL
+// plausibility check does not fire just because one cache is about to
+// expire.
+func observedTTL(answers []analysis.ResolverAnswer) uint32 {
+	var max uint32
+	for _, ra := range answers {
+		if ra.Answer.Err == "" && ra.Answer.TTL > max {
+			max = ra.Answer.TTL
+		}
+	}
+	return max
+}
+
+// allFailed reports whether every resolver failed for every queried type,
+// i.e. the query produced no data at all.
+func allFailed(res query.Result, types []resolver.RecordType) bool {
+	for _, t := range types {
+		for _, ra := range res.ByType[t] {
+			if ra.Answer.Err == "" {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // buildSnapshot flattens a query.Result into a snapshot.Snapshot for saving

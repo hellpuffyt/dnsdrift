@@ -24,6 +24,10 @@ type Result struct {
 	// lag from misconfiguration. A resolver whose SOA query failed is
 	// absent from this map.
 	SOAByResolver map[string]uint32
+	// SOAZoneByResolver holds the zone apex named by each resolver's SOA
+	// answer (from the answer or the authority section). It tells whether
+	// the queried name is the apex, which some health checks depend on.
+	SOAZoneByResolver map[string]string
 }
 
 // RunPanel queries every resolver in panel for domain across every type in
@@ -76,14 +80,16 @@ func RunPanel(ctx context.Context, panel []resolver.Resolver, domain string, typ
 	wg.Wait()
 
 	result := Result{
-		Domain:        domain,
-		ByType:        map[resolver.RecordType][]analysis.ResolverAnswer{},
-		SOAByResolver: map[string]uint32{},
+		Domain:            domain,
+		ByType:            map[resolver.RecordType][]analysis.ResolverAnswer{},
+		SOAByResolver:     map[string]uint32{},
+		SOAZoneByResolver: map[string]string{},
 	}
 	for _, o := range outcomes {
 		if o.rtype == resolver.TypeSOA {
 			if o.answer.Err == "" && o.answer.SOA != nil {
 				result.SOAByResolver[o.res.Name()] = o.answer.SOA.Serial
+				result.SOAZoneByResolver[o.res.Name()] = o.answer.SOA.Zone
 			}
 			if !needSOA {
 				// SOA was explicitly requested; also surface it as a

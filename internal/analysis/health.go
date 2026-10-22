@@ -1,6 +1,10 @@
 package analysis
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // Severity is how serious a health Finding is.
 type Severity string
@@ -89,8 +93,21 @@ func CheckSOASerialConsistency(serials map[string]uint32) []Finding {
 	return []Finding{{
 		Code:     CodeSOASerialMismatch,
 		Severity: SeverityError,
-		Message:  "authoritative nameservers disagree on the SOA serial; zone transfer between them may have failed",
+		Message:  fmt.Sprintf("SOA serials differ across sources (%s); either a change is still propagating through resolver caches or the zone's nameservers are out of sync", serialList(serials)),
 	}}
+}
+
+func serialList(serials map[string]uint32) string {
+	names := make([]string, 0, len(serials))
+	for n := range serials {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	parts := make([]string, len(names))
+	for i, n := range names {
+		parts[i] = fmt.Sprintf("%s=%d", n, serials[n])
+	}
+	return strings.Join(parts, ", ")
 }
 
 // CheckTTL flags a TTL that is implausibly low (excessive load on
@@ -147,7 +164,9 @@ func CheckDanglingCNAME(target string, targetResolves bool) []Finding {
 // returns the combined findings.
 func RunAll(in HealthInput) []Finding {
 	var findings []Finding
-	findings = append(findings, CheckNSRedundancy(in.NSRecords)...)
+	if !in.SkipNS {
+		findings = append(findings, CheckNSRedundancy(in.NSRecords)...)
+	}
 	findings = append(findings, CheckSOASerialConsistency(in.AuthoritativeSerials)...)
 	if in.HasTTL {
 		findings = append(findings, CheckTTL(in.TTL, in.TTLRecordType)...)
@@ -162,6 +181,10 @@ func RunAll(in HealthInput) []Finding {
 // HealthInput bundles the already-resolved facts RunAll needs. Building it
 // is the CLI's job; RunAll and the individual Check* functions stay pure.
 type HealthInput struct {
+	// SkipNS disables the NS redundancy check. The CLI sets it when NS was
+	// not queried, or the name is not the zone apex: only the apex has NS
+	// records, so their absence elsewhere is not a finding.
+	SkipNS               bool
 	NSRecords            []string
 	AuthoritativeSerials map[string]uint32
 	HasTTL               bool

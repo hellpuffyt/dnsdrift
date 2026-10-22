@@ -109,7 +109,11 @@ func TestCompareChangedValues(t *testing.T) {
 	}
 }
 
-func TestCompareChangedTTLOnly(t *testing.T) {
+// Expectation changed in the audit: a TTL-only difference used to count as
+// drift. Resolvers report remaining cache time, which counts down between
+// any two snapshots, so every diff of an unchanged domain reported drift
+// and exited 1.
+func TestCompareTTLOnlyDifferenceIsNotDrift(t *testing.T) {
 	old := Snapshot{Domain: "example.com", Records: []Record{
 		{Resolver: "Google", Type: "A", Values: []string{"1.2.3.4"}, TTL: 300},
 	}}
@@ -117,8 +121,8 @@ func TestCompareChangedTTLOnly(t *testing.T) {
 		{Resolver: "Google", Type: "A", Values: []string{"1.2.3.4"}, TTL: 30},
 	}}
 	d := Compare(old, next)
-	if len(d.Changed) != 1 {
-		t.Fatalf("a TTL-only change should still be reported as changed, got %+v", d)
+	if d.HasDrift() || d.Unchanged != 1 {
+		t.Fatalf("a TTL countdown must not be drift, got %+v", d)
 	}
 }
 

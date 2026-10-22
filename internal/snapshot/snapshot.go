@@ -85,9 +85,10 @@ func (d Diff) HasDrift() bool {
 }
 
 // Compare diffs old against next, keyed by (resolver, record type). A
-// record present in both with identical Values (order-independent) and TTL
-// is unchanged; identical Values but different TTL still counts as changed,
-// since a TTL swing on an otherwise-stable answer is itself signal.
+// record present in both with identical Values (order-independent) is
+// unchanged even if its TTL differs: resolvers report the time remaining in
+// their cache, which counts down between any two snapshots, so a TTL-only
+// difference is not drift. Changed entries still carry both TTLs.
 func Compare(old, next Snapshot) Diff {
 	oldByKey := map[string]Record{}
 	for _, r := range old.Records {
@@ -106,7 +107,7 @@ func Compare(old, next Snapshot) Diff {
 			d.Added = append(d.Added, nr)
 			continue
 		}
-		if !sameValues(or.Values, nr.Values) || or.TTL != nr.TTL {
+		if !sameValues(or.Values, nr.Values) {
 			d.Changed = append(d.Changed, Change{
 				Resolver:  nr.Resolver,
 				Type:      nr.Type,
