@@ -4,7 +4,7 @@ Thanks for considering a contribution to dnsdrift.
 
 ## Development setup
 
-Requires Go 1.22+.
+Requires Go 1.26+ (needed by golang.org/x/net v0.60.0; use the latest patch release).
 
 ```sh
 go build ./...

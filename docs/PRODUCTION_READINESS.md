@@ -6,7 +6,7 @@ classification at the end is a proposal for the maintainer to confirm.
 - Tested commit: `5efb674cfcbae0e925fa4a3086b2cc5617bfe28a` (this file was
   added in the next commit and changes no code)
 - Date: 2026-10-22
-- Host: macOS 27 (Apple Silicon), Go 1.27.3. `go.mod` declares `go 1.22`.
+- Host: macOS 27 (Apple Silicon), Go 1.27.3. `go.mod` declares `go 1.26.0`.
 
 ## Scope
 
@@ -18,9 +18,9 @@ snapshots. Wire access through `github.com/miekg/dns`.
 
 ## Platforms and prerequisites
 
-- Go 1.22+. Verified locally on macOS arm64.
-- CI: Go 1.22/1.23 on ubuntu and Windows, Go 1.23 on macOS; not yet run on
-  this branch.
+- Go 1.26+ (latest patch release recommended). Verified locally on macOS arm64 with Go 1.27.3.
+- CI: Go 1.26.x/1.27.x on ubuntu, Windows and macOS, plus govulncheck; not yet run on
+  this branch (pending until pushed).
 - `go test ./...` needs no network: DNS behaviour is tested against servers
   on 127.0.0.1 (`internal/dnstest`). `TestLivePublicResolvers` is the only
   test that uses public DNS; it is skipped unless `DNSDRIFT_LIVE=1`. The CI
@@ -90,10 +90,15 @@ verdict, findings, exit codes, snapshots).
 - Network: DNS only, to the panel and `--resolvers`. Answers are parsed by
   miekg/dns and treated as data.
 - No DNSSEC validation (documented in `SECURITY.md` and README).
-- Dependencies: no reachable advisories; module-level advisories in
-  `golang.org/x/net`/`x/sys` remain. Fixing them needs `x/net` ≥ v0.60.0,
-  which raises the minimum Go version above the 1.22 the CI matrix tests,
-  so the upgrade is left to the maintainer.
+- Dependencies: govulncheck v1.9.0 found 19 advisories before the upgrade, all at
+  "module required" level (none imported or called). They were fixed rather than dismissed:
+  `golang.org/x/net` v0.27.0 → v0.60.0 and `golang.org/x/sys` v0.22.0 → v0.48.0.
+  x/net v0.56.0 was not enough (5 HTTP/2 advisories, GO-2026-6603/6610/6611/6612/6617,
+  are fixed only in v0.60.0). x/net v0.60.0 requires `go 1.26.0`, so the minimum Go
+  version is now 1.26; CI tests 1.26.x and 1.27.x (latest patch releases, which carry the
+  standard-library fixes) and runs govulncheck. After the upgrade:
+  `govulncheck -show verbose ./...` → "No vulnerabilities found" (Go 1.27.3);
+  `go vet ./...` clean; `go test -race -count=1 ./...` 6/6 packages ok.
 - Secrets: none in tree or history.
 - Added `SECURITY.md`; README no longer asks for public issue reports.
 
