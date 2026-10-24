@@ -1,6 +1,9 @@
 package resolver
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 // FakeResolver is an in-memory Resolver used by tests. It lets tests build
 // deterministic, offline scenarios (agreement, split answers, propagation
@@ -16,8 +19,11 @@ type FakeResolver struct {
 	// than a DNS-level error).
 	QueryErr error
 	// Calls records every (name, rtype) pair this resolver was asked
-	// about, in order, so tests can assert on call patterns.
+	// about, in order, so tests can assert on call patterns. Read it only
+	// after the queries have finished (e.g. after RunPanel returns).
 	Calls []FakeCall
+
+	mu sync.Mutex // guards Calls: the panel queries resolvers concurrently
 }
 
 // FakeCall records a single Query invocation against a FakeResolver.
@@ -45,7 +51,9 @@ func (f *FakeResolver) Address() string { return f.addr }
 
 // Query implements Resolver.
 func (f *FakeResolver) Query(ctx context.Context, name string, rtype RecordType) (Answer, error) {
+	f.mu.Lock()
 	f.Calls = append(f.Calls, FakeCall{Name: name, RType: rtype})
+	f.mu.Unlock()
 	if f.QueryErr != nil {
 		return Answer{}, f.QueryErr
 	}

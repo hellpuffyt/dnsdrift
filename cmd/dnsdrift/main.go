@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prabeshsharma/dnsdrift/internal/analysis"
-	"github.com/prabeshsharma/dnsdrift/internal/output"
-	"github.com/prabeshsharma/dnsdrift/internal/query"
-	"github.com/prabeshsharma/dnsdrift/internal/resolver"
-	"github.com/prabeshsharma/dnsdrift/internal/snapshot"
+	"github.com/hellpuffyt/dnsdrift/internal/analysis"
+	"github.com/hellpuffyt/dnsdrift/internal/output"
+	"github.com/hellpuffyt/dnsdrift/internal/query"
+	"github.com/hellpuffyt/dnsdrift/internal/resolver"
+	"github.com/hellpuffyt/dnsdrift/internal/snapshot"
 )
 
 const version = "0.1.0"
@@ -167,10 +167,17 @@ func runQuery(args []string, stdout, stderr *os.File) int {
 	cnameResolves := false
 	if cReport, ok := reports[resolver.TypeCNAME]; ok {
 		if rec := majorityRecords(cReport); len(rec) > 0 && len(panel) > 0 {
-			checkCtx, checkCancel := context.WithTimeout(context.Background(), *timeoutFlag)
-			ans, qerr := panel[0].Query(checkCtx, rec[0], resolver.TypeA)
-			checkCancel()
-			cnameResolves = qerr == nil && ans.Err == "" && len(ans.Records) > 0
+			// A target with only IPv6 addresses is not dangling: try A,
+			// then AAAA.
+			for _, t := range []resolver.RecordType{resolver.TypeA, resolver.TypeAAAA} {
+				checkCtx, checkCancel := context.WithTimeout(context.Background(), *timeoutFlag)
+				ans, qerr := panel[0].Query(checkCtx, rec[0], t)
+				checkCancel()
+				if qerr == nil && ans.Err == "" && len(ans.Records) > 0 {
+					cnameResolves = true
+					break
+				}
+			}
 		}
 	}
 	healthInput := buildHealthInput(domain, res, reports, cnameResolves)
@@ -193,6 +200,10 @@ func runQuery(args []string, stdout, stderr *os.File) int {
 		}
 	}
 
+	if allFailed(res, types) {
+		fmt.Fprintln(stderr, "no resolver answered any query; check connectivity and --resolvers")
+		return 3
+	}
 	if out.AnyDisagreement() {
 		return 1
 	}

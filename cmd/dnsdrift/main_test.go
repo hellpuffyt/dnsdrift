@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prabeshsharma/dnsdrift/internal/snapshot"
+	"github.com/hellpuffyt/dnsdrift/internal/snapshot"
 )
 
 // captureOutput runs fn with a pipe wired to *os.File args and returns

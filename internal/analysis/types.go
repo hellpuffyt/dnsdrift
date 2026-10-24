@@ -6,7 +6,7 @@
 // already collected.
 package analysis
 
-import "github.com/prabeshsharma/dnsdrift/internal/resolver"
+import "github.com/hellpuffyt/dnsdrift/internal/resolver"
 
 // ResolverAnswer pairs a resolver's identity with what it returned for one
 // (name, type) query.

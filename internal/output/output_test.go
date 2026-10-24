@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/prabeshsharma/dnsdrift/internal/analysis"
-	"github.com/prabeshsharma/dnsdrift/internal/resolver"
+	"github.com/hellpuffyt/dnsdrift/internal/analysis"
+	"github.com/hellpuffyt/dnsdrift/internal/resolver"
 )
 
 func TestAnyDisagreementFalseWhenAllAgreeAndHealthy(t *testing.T) {

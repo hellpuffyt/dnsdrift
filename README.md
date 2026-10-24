@@ -77,13 +77,13 @@ this tool's core feature needs.
 ## Installation
 
 ```sh
-go install github.com/prabeshsharma/dnsdrift/cmd/dnsdrift@latest
+go install github.com/hellpuffyt/dnsdrift/cmd/dnsdrift@latest
 ```
 
 Or build from source:
 
 ```sh
-git clone https://github.com/prabeshsharma/dnsdrift
+git clone https://github.com/hellpuffyt/dnsdrift
 cd dnsdrift
 go build -o dnsdrift ./cmd/dnsdrift
 ```
@@ -120,7 +120,7 @@ dnsdrift version
 | 0    | Full agreement across resolvers, no health findings           |
 | 1    | Disagreement between resolvers, or at least one health finding, or a snapshot diff found drift |
 | 2    | Usage error (bad flags/arguments)                              |
-| 3    | A query or file operation could not complete                   |
+| 3    | No resolver answered any query, or a file operation could not complete |
 
 ## Examples
 
@@ -130,34 +130,44 @@ Query a domain across the default panel for every record type:
 dnsdrift query --types A,NS,SOA example.com
 ```
 
+Output captured on 2026-10-22 (exit code 0):
+
 ```
 dnsdrift report for example.com
 ========================================
 
 A
   all resolvers agree
-  [majority]  Cloudflare, Google, OpenDNS, Quad9  93.184.215.14
+  [majority]  Cloudflare, Google, OpenDNS, Quad9  104.20.23.154, 172.66.147.243
 
 NS
   all resolvers agree
-  [majority]  Cloudflare, Google, OpenDNS, Quad9  a.iana-servers.net, b.iana-servers.net
+  [majority]  Cloudflare, Google, OpenDNS, Quad9  elliott.ns.cloudflare.com, hera.ns.cloudflare.com
 
 SOA
   all resolvers agree
-  [majority]  Cloudflare, Google, OpenDNS, Quad9  ns.icann.org noc.dns.icann.org 2019...
+  [majority]  Cloudflare, Google, OpenDNS, Quad9  elliott.ns.cloudflare.com dns.cloudflare.com 2418004112
 
 Health findings: none
 ```
 
 A disagreement, with the propagation/misconfiguration verdict shown per
-resolver:
+resolver. This run used three local test DNS servers (one still serving
+the previous zone serial) via `--only-resolvers --resolvers`, as the
+end-to-end tests do; exit code 1:
 
 ```
-AAAA
+dnsdrift report for example.test
+========================================
+
+A
   DISAGREEMENT
-  [majority]  Cloudflare, Google, OpenDNS  2606:2800:220:1:248:1893:25c8:1946
-  [minority]  Quad9                        2606:2800:220:1:248:1893:25c8:1900
-  Quad9: propagating -- resolver holds an older SOA serial and its cached answer's TTL has not expired; expected to converge
+  [minority]  Stale           192.0.2.10
+  [majority]  Fresh1, Fresh2  192.0.2.99
+  Stale: propagating -- resolver holds an older SOA serial and its cached answer's TTL has not expired; expected to converge
+
+Health findings
+  [ERROR] soa-serial-mismatch: SOA serials differ across sources (Fresh1=2024010102, Fresh2=2024010102, Stale=2024010101); either a change is still propagating through resolver caches or the zone's nameservers are out of sync
 ```
 
 Add a custom resolver and use it exclusively:
@@ -175,11 +185,18 @@ dnsdrift query example.com --save after.json
 dnsdrift diff before.json after.json
 ```
 
+Real output from the local test server after changing the A record
+(exit code 1):
+
 ```
-dnsdrift snapshot diff: example.com -> example.com
+dnsdrift snapshot diff: example.test -> example.test
 ========================================
-~ Google A: 93.184.215.14 (ttl 3600s) -> 93.184.216.34 (ttl 3600s)
+~ Local A: 192.0.2.10 (ttl 300s) -> 192.0.2.99 (ttl 300s)
 ```
+
+Only changed record values count as drift. A TTL-only difference does not:
+public resolvers report the time left in their cache, which counts down
+between any two snapshots.
 
 Use it as a CI gate (fails the build on disagreement or findings):
 
@@ -191,13 +208,13 @@ dnsdrift query mycompany.com --types A,MX || exit 1
 
 | Code                    | Severity | Meaning                                                                |
 | ------------------------ | -------- | ------------------------------------------------------------------------ |
-| `no-ns-records`            | error    | No NS records found; the zone is not delegated or is unresolvable         |
+| `no-ns-records`            | error    | No NS records found at the zone apex (checked only when NS is queried and the name is the apex) |
 | `single-ns-record`         | warning  | Only one NS record; no redundancy if it becomes unreachable               |
-| `soa-serial-mismatch`      | error    | Resolvers/authoritative sources disagree on the SOA serial                |
-| `ttl-too-low`              | warning  | TTL below 60s; can overload authoritative/resolver infrastructure         |
+| `soa-serial-mismatch`      | error    | Resolvers in the panel report different SOA serials (propagation in progress, or nameservers out of sync) |
+| `ttl-too-low`              | warning  | Largest observed A TTL below 60s; can overload authoritative/resolver infrastructure |
 | `ttl-too-high`             | warning  | TTL above 7 days; future changes will take a long time to converge        |
-| `cname-at-apex`            | error    | A CNAME record exists at the zone apex, which is invalid                  |
-| `dangling-cname`           | error    | A CNAME's target does not resolve; possible subdomain takeover risk       |
+| `cname-at-apex`            | error    | A CNAME record exists at the zone apex (apex taken from the SOA answers; never assumed) |
+| `dangling-cname`           | error    | A CNAME's target has neither A nor AAAA records; possible subdomain takeover risk |
 
 ## Testing
 
@@ -209,7 +226,18 @@ gofmt -l .   # must print nothing
 ```
 
 All analysis, consensus, verdict, health-check, and snapshot-diff logic is
-tested offline using `resolver.FakeResolver` — no test depends on real DNS.
+tested offline using `resolver.FakeResolver`. The real resolver and the CLI
+are tested end to end against small DNS servers started on 127.0.0.1
+(`internal/dnstest`): every record type, truncation with TCP retry,
+NXDOMAIN, timeouts, disagreement verdicts, health findings, exit codes and
+snapshot diffs. `go test ./...` never contacts public DNS.
+
+One live test queries the built-in public panel; it is skipped unless you
+opt in:
+
+```sh
+DNSDRIFT_LIVE=1 go test -run TestLivePublicResolvers -v ./internal/resolver/
+```
 
 ## Security
 
@@ -218,8 +246,24 @@ tested offline using `resolver.FakeResolver` — no test depends on real DNS.
 - Snapshot JSON files contain only DNS record data (IPs, hostnames, TXT
   content, TTLs, serials) for the domain you queried — review before sharing
   if your TXT records contain sensitive values (e.g. verification tokens).
-- If you report a security issue, please open an issue describing it without
-  including unrelated sensitive data.
+- Report security issues privately at
+  https://github.com/hellpuffyt/dnsdrift/security/advisories/new (see
+  [SECURITY.md](SECURITY.md)).
+
+## Limitations
+
+- The propagation/misconfiguration verdict is a heuristic over the SOA
+  serial and the *remaining* cache TTL each resolver reports; it cannot see
+  a resolver's cache policy.
+- Resolvers that apply filtering (e.g. OpenDNS) or geo-aware answers can
+  legitimately disagree; dnsdrift reports that as disagreement.
+- No DNSSEC validation; answers are taken as returned.
+- Two resolvers given the same name collide in snapshots.
+- Public resolvers must be reachable on UDP/TCP 53 from where you run it;
+  with no answers at all the exit code is 3.
+
+See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the
+audit evidence.
 
 ## License
 
