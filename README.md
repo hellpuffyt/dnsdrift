@@ -76,6 +76,9 @@ this tool's core feature needs.
 
 ## Installation
 
+Requires Go 1.26+ (the module's `go` directive; older toolchains refuse to
+build it).
+
 ```sh
 go install github.com/hellpuffyt/dnsdrift/cmd/dnsdrift@latest
 ```
