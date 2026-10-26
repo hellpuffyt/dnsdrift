@@ -3,7 +3,22 @@
 Detect DNS record drift across resolvers and over time, and tell the
 difference between ordinary propagation lag and a genuine misconfiguration.
 
-## What
+## Demo
+
+<img src="docs/screenshots/dnsdrift-propagating-disagreement.png" width="100%" alt="Terminal capture: dnsdrift query against three loopback DNS servers named Stale, Fresh1 and Fresh2 for example.test; the A record disagrees, Stale is the minority with 192.0.2.10 and is judged propagating because its SOA serial is older and its TTL has not expired; health finding soa-serial-mismatch; exit status 1.">
+
+A disagreement, captured from a real run against three small DNS servers on
+127.0.0.1 (one still serving the previous zone serial), the same setup the
+end-to-end tests use. dnsdrift explains that `Stale` is propagating rather
+than misconfigured and exits `1`.
+
+<img src="docs/screenshots/dnsdrift-example-com-public-resolvers.png" width="100%" alt="Terminal capture: dnsdrift query --types A,NS,SOA example.com against Cloudflare, Google, OpenDNS and Quad9; all resolvers agree on A, NS and SOA; no health findings; exit status 0.">
+
+A live query of `example.com` against the built-in public panel, captured
+on 2026-10-26: all four resolvers agree and the exit code is `0`. Both runs
+are reproduced as text under [Examples](#examples).
+
+## What it does
 
 `dnsdrift` queries a domain against many public DNS resolvers concurrently,
 compares the answers, and explains any disagreement instead of just listing
@@ -17,8 +32,8 @@ a browser tab and guessing. That tells you nothing about *why* one place
 sees the new answer and another doesn't, and it can't distinguish a change
 still spreading through caches from a resolver that is stuck, misconfigured,
 or serving stale split-horizon data indefinitely. `dnsdrift` queries the
-panel in parallel, groups the answers, and — using each resolver's reported
-TTL and SOA serial — reasons about whether a disagreement is expected to
+panel in parallel, groups the answers, and uses each resolver's reported
+TTL and SOA serial to reason about whether a disagreement is expected to
 resolve itself or is a real fault worth investigating.
 
 ## Features
@@ -42,7 +57,7 @@ resolve itself or is a real fault worth investigating.
   - No SOA data available for that resolver → **unknown**.
 - **Snapshot and diff**: `--save` writes a query's results to JSON;
   `dnsdrift diff old.json new.json` reports additions, removals, and changes
-  between two snapshots — the drift-over-time half of the tool.
+  between two snapshots. This is the drift-over-time half of the tool.
 - **Health findings**: no NS records, a single NS record (no redundancy),
   SOA serial mismatch, implausibly low/high TTL, CNAME at the zone apex, and
   dangling CNAME targets (subdomain takeover risk).
@@ -61,16 +76,16 @@ internal/output      Table and JSON rendering
 ```
 
 The important boundary is `resolver.Resolver`: it is the *only* thing that
-touches the network. Everything above it — consensus grouping, the
+touches the network. Everything above it (consensus grouping, the
 propagation-vs-misconfiguration heuristic, health checks, and snapshot
-diffing — is pure functions over plain data, exercised in tests with
+diffing) is pure functions over plain data, exercised in tests with
 `resolver.FakeResolver`. CI never depends on real DNS to validate that logic.
 
 **Why `github.com/miekg/dns` instead of the stdlib `net` package**: the
 propagation-vs-misconfiguration verdict depends on the raw TTL and SOA
 serial of each answer, and on querying a *specific* resolver rather than
 the OS's configured one. `net.LookupHost` and friends go through the local
-resolver and return only resolved values — no TTL, no SOA, no choice of
+resolver and return only resolved values: no TTL, no SOA, no choice of
 upstream server. `miekg/dns` gives wire-level access to exactly the fields
 this tool's core feature needs.
 
@@ -127,13 +142,14 @@ dnsdrift version
 
 ## Examples
 
-Query a domain across the default panel for every record type:
+Query A, NS and SOA across the default panel (omit `--types` for all seven types):
 
 ```sh
 dnsdrift query --types A,NS,SOA example.com
 ```
 
-Output captured on 2026-10-22 (exit code 0):
+Output captured on 2026-10-22 and again, identical, on 2026-10-26 (exit
+code 0):
 
 ```
 dnsdrift report for example.com
@@ -155,11 +171,11 @@ Health findings: none
 ```
 
 A disagreement, with the propagation/misconfiguration verdict shown per
-resolver. This run used three local test DNS servers (one still serving
-the previous zone serial) via `--only-resolvers --resolvers`, as the
-end-to-end tests do; exit code 1:
+resolver. This run used three local DNS servers on 127.0.0.1 (one still
+serving the previous zone serial), as the end-to-end tests do; exit code 1:
 
 ```
+$ dnsdrift query --only-resolvers --resolvers "Stale=127.0.0.1:5303,Fresh1=127.0.0.1:5301,Fresh2=127.0.0.1:5302" --types A example.test
 dnsdrift report for example.test
 ========================================
 
@@ -228,6 +244,10 @@ go test ./...
 gofmt -l .   # must print nothing
 ```
 
+CI runs build and tests on Linux, macOS and Windows with Go 1.26 and 1.27,
+plus `go vet`, `govulncheck`, `gofmt`, and a smoke job that runs a live
+`example.com` query and checks the JSON parses.
+
 All analysis, consensus, verdict, health-check, and snapshot-diff logic is
 tested offline using `resolver.FakeResolver`. The real resolver and the CLI
 are tested end to end against small DNS servers started on 127.0.0.1
@@ -247,7 +267,7 @@ DNSDRIFT_LIVE=1 go test -run TestLivePublicResolvers -v ./internal/resolver/
 - dnsdrift only performs DNS lookups (UDP/TCP to port 53); it makes no other
   network calls and stores no credentials.
 - Snapshot JSON files contain only DNS record data (IPs, hostnames, TXT
-  content, TTLs, serials) for the domain you queried — review before sharing
+  content, TTLs, serials) for the domain you queried. Review them before sharing
   if your TXT records contain sensitive values (e.g. verification tokens).
 - Report security issues privately at
   https://github.com/hellpuffyt/dnsdrift/security/advisories/new (see
@@ -268,6 +288,11 @@ DNSDRIFT_LIVE=1 go test -run TestLivePublicResolvers -v ./internal/resolver/
 See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the
 audit evidence.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). The main rule: anything that touches
+the network goes through `resolver.Resolver`, and analysis code stays offline.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
